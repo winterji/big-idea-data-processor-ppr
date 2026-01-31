@@ -8,10 +8,40 @@
 
 #include "../include/ReadDexcomData.h"
 #include "../include/DataReader.h"
+#include "../libs/stringUtils.h"
 
 // output files to log into
-std::ofstream benchmarkLog("benchmark_logs.txt");
-std::ofstream benchmarkCsv("benchmarks.csv");
+std::ofstream benchmarkLog;
+std::ofstream benchmarkCsv;
+
+// Configuration structure for CLI args
+struct Config {
+    bool runDexcom = false;
+    bool runHr = false;
+    bool runBvp = false;
+    
+    bool runSeq = false;
+    bool runPar = false;
+    bool runGpu = false;
+    
+    int numKernels = 3;
+    std::string logFileName = "benchmark_logs.txt";
+
+    bool explicitDatasets = false;
+    bool explicitModes = false;
+};
+
+void printUsage(const char* progName) {
+    std::cout << "Usage: " << progName << " [options]\n"
+              << "Options:\n"
+              << "  -d, --datasets <list>    Comma separated list of datasets (dexcom, hr, bvp)\n"
+              << "                           Example: -d dexcom,bvp\n"
+              << "  -m, --mode <list>        Comma separated list of modes (seq, par, gpu, all)\n"
+              << "                           Example: -m seq,gpu\n"
+              << "  -k, --kernels <num>      Number of GPU kernels to use (1, 2, or 3). Default: 3\n"
+              << "  -o, --output <file>      Output file path for logs. Default: benchmark_logs.txt\n"
+              << "  -h, --help               Show this help message\n";
+}
 
 std::string dataTypeToString(DataType type) {
     switch (type) {
@@ -130,13 +160,81 @@ DexcomData readAllDexcomData() {
     return dexcom;
 }
 
-int main() {
+Config parseCLIArguments(int argc, char* argv[]) {
+    Config cfg;
+    // --- Command Line Argument Parsing ---
+    for (int i = 1; i < argc; ++i) {
+        std::string arg = argv[i];
+        if (arg == "-h" || arg == "--help") {
+            printUsage(argv[0]);
+            return cfg;
+        } 
+        else if (arg == "-d" || arg == "--datasets") {
+            if (i + 1 < argc) {
+                cfg.explicitDatasets = true;
+                std::vector<std::string> ds = split(argv[++i], ',');
+                for (const auto& d : ds) {
+                    if (d == "dexcom") cfg.runDexcom = true;
+                    else if (d == "hr") cfg.runHr = true;
+                    else if (d == "bvp") cfg.runBvp = true;
+                    else std::cerr << "Unknown dataset: " << d << std::endl;
+                }
+            }
+        } 
+        else if (arg == "-m" || arg == "--mode") {
+            if (i + 1 < argc) {
+                cfg.explicitModes = true;
+                std::vector<std::string> ms = split(argv[++i], ',');
+                for (const auto& m : ms) {
+                    if (m == "seq") cfg.runSeq = true;
+                    else if (m == "par") cfg.runPar = true;
+                    else if (m == "gpu") cfg.runGpu = true;
+                    else if (m == "all") { cfg.runSeq = cfg.runPar = cfg.runGpu = true; }
+                    else std::cerr << "Unknown mode: " << m << std::endl;
+                }
+            }
+        } 
+        else if (arg == "-k" || arg == "--kernels") {
+            if (i + 1 < argc) {
+                cfg.numKernels = std::stoi(argv[++i]);
+                if (cfg.numKernels < 1 || cfg.numKernels > 3) {
+                    std::cerr << "Invalid number of kernels (must be 1-3). Defaulting to 3." << std::endl;
+                    cfg.numKernels = 3;
+                }
+            }
+        }
+        else if (arg == "-o" || arg == "--output") {
+            if (i + 1 < argc) {
+                cfg.logFileName = argv[++i];
+            }
+        }
+    }
+
+    // Defaults if arguments not provided
+    if (!cfg.explicitDatasets) {
+        cfg.runDexcom = cfg.runHr = cfg.runBvp = true;
+    }
+    if (!cfg.explicitModes) {
+        cfg.runSeq = cfg.runPar = cfg.runGpu = true;
+    }
+    return cfg;
+}
+
+int main(int argc, char* argv[]) {
+
+    Config cfg = parseCLIArguments(argc, argv);
+
+    benchmarkLog.open(cfg.logFileName);
+    benchmarkCsv.open("benchmarks.csv");
 
     if (benchmarkCsv.is_open()) {
         benchmarkCsv << "Dataset, Algorithm, Time [ms]" << std::endl;
     }
 
-    std::vector<std::string> processData{"dexcom", "hr", "bvp"};
+    std::vector<std::string> processData;
+    if (cfg.runDexcom) processData.push_back("dexcom");
+    if (cfg.runHr)     processData.push_back("hr");
+    if (cfg.runBvp)    processData.push_back("bvp");
 
     for (const auto& data : processData) {
         if (data == "dexcom") {
@@ -150,36 +248,46 @@ int main() {
             std::cout << "Number of patients: " << dexcom.num_patients << std::endl;
 
             // Sequential
-            measureTime("CPU Sequential", [&] () {
-                dexcom.processSequential();
-            }, DEXCOM);
-            // std::cout << "Size of medians: " << dexcom.result_medians_seq.size() << std::endl;
-            // std::cout << dexcom.result_medians_seq.at(0) << std::endl;
-            // dexcom.result_medians.clear();
-            // dexcom.result_medians.reserve(dexcom.num_time_slots * dexcom.num_patients);
+            if (cfg.runSeq) {
+                measureTime("CPU Sequential", [&] () {
+                    dexcom.processSequential();
+                }, DEXCOM);
+            }
 
             // Parallel
-            measureTime("CPU Parallel + Vectorized", [&] () {
-                dexcom.processParallelCPU();
-            }, DEXCOM);
-            // std::cout << "Size of medians: " << dexcom.result_medians_par.size() << std::endl;
-            // std::cout << dexcom.result_medians_par.at(0) << std::endl;
-            control_results(dexcom.result_medians_seq_per_pat, dexcom.result_medians_par_per_pat, "CPU seq vs CPU par+vect", true);
+            if (cfg.runPar) {
+                measureTime("CPU Parallel + Vectorized", [&] () {
+                    dexcom.processParallelCPU();
+                }, DEXCOM);
 
-            // Parallel, no vectorization
-            measureTime("CPU Parallel", [&] () {
-                dexcom.processParallelCPUNonVectorized();
-            }, DEXCOM);
-            control_results(dexcom.result_medians_seq_per_pat, dexcom.result_medians_par_nov_vect_per_pat, "CPU seq vs CPU par");
+                // Validation
+                if (cfg.runSeq) {
+                    control_results(dexcom.result_medians_seq_per_pat, dexcom.result_medians_par_per_pat, "CPU seq vs CPU par+vect", true);
+                }
+
+                measureTime("CPU Parallel - NoVect", [&] () {
+                    dexcom.processParallelCPUNonVectorized();
+                }, DEXCOM);
+                
+                if (cfg.runSeq) {
+                    control_results(dexcom.result_medians_seq_per_pat, dexcom.result_medians_par_nov_vect_per_pat, "CPU seq vs CPU par");
+                }
+            }
 
             // GPU
-            measureTime("GPU", [&] () {
-                dexcom.processGPU(-1, false, 3);
-            }, DEXCOM);
-            control_results(dexcom.result_medians_seq, dexcom.result_medians_gpu, "CPU seq vs GPU");
+            if (cfg.runGpu) {
+                std::string label = "GPU (" + std::to_string(cfg.numKernels) + " kernels)";
+                measureTime(label, [&] () {
+                    dexcom.processGPU(-1, false, cfg.numKernels);
+                }, DEXCOM);
+                
+                if (cfg.runSeq) {
+                    control_results(dexcom.result_medians_seq, dexcom.result_medians_gpu, "CPU seq vs GPU");
+                }
+            }
 
-            dexcom.exportDebugCSV("dexcom_output.csv");
-
+            dexcom.exportDebugCSV("dexcom_debug_output.csv");
+            dexcom.exportToCSV("dexcom_output.csv");
         }
         // ------------- HR Data --------------
         else if (data == "hr") {
@@ -192,37 +300,47 @@ int main() {
             std::cout << "Number of patients: " << hrData.num_patients << std::endl;
 
             // Sequential
-            measureTime("CPU Sequential", [&] () {
-                hrData.processSequential(288);
-            }, HR);
-            // std::cout << "Size of updated timeslots: " << hrData.updated_timeslots_seq.size() << std::endl;
-            // measureTime("CPU Seq new time slots", [&] () {
-            //     hrData.processSequentialCPUToNewTimeSlots(288);
-            // });
+            if (cfg.runSeq) {
+                measureTime("CPU Sequential", [&] () {
+                    hrData.processSequential(288);
+                }, HR);
+            }
 
-            measureTime("CPU Parallel + Vectorized", [&] () {
-                hrData.processParallelCPU(288);
-            }, HR);
-            // std::cout << "Size of medians through patients: " << hrData.result_medians_par_per_pat.size() << std::endl;
-            // std::cout << "Size of medians through only timeslots: " << hrData.result_medians_par.size() << std::endl;
+            // Parallel
+            if (cfg.runPar) {
+                measureTime("CPU Parallel + Vectorized", [&] () {
+                    hrData.processParallelCPU(288);
+                }, HR);
 
-            control_results(hrData.result_medians_seq_per_pat, hrData.result_medians_par_per_pat, "Per patients: Seq vs Par+vect", false);
-            control_results(hrData.result_medians_seq, hrData.result_medians_par, "Per timeslots: Seq vs Par+vect", false);
-            control_results(hrData.updated_timeslots_seq, hrData.updated_timeslots_par, "Per wanted_timeslots: Seq vs Par+vect", false);
+                if (cfg.runSeq) {
+                    control_results(hrData.result_medians_seq_per_pat, hrData.result_medians_par_per_pat, "Per patients: Seq vs Par+vect", false);
+                    control_results(hrData.result_medians_seq, hrData.result_medians_par, "Per timeslots: Seq vs Par+vect", false);
+                    control_results(hrData.updated_timeslots_seq, hrData.updated_timeslots_par, "Per wanted_timeslots: Seq vs Par+vect", false);
+                }
 
-            measureTime("CPU Parallel - NoVect", [&] () {
-                hrData.processParallelCPUNonVectorized();
-            }, HR);
-            control_results(hrData.result_medians_seq_per_pat, hrData.result_medians_par_nov_vect_per_pat, "Seq vs Par-noVect", false);
+                measureTime("CPU Parallel - NoVect", [&] () {
+                    hrData.processParallelCPUNonVectorized();
+                }, HR);
+                
+                if (cfg.runSeq) {
+                    control_results(hrData.result_medians_seq_per_pat, hrData.result_medians_par_nov_vect_per_pat, "Seq vs Par-noVect", false);
+                }
+            }
 
-            measureTime("GPU", [&] () {
-                hrData.processGPU(288, false, 3);
-            }, HR);
-            // control_results(hrData.result_medians_seq_per_pat, hrData.result_medians_gpu_per_pat, "Seq vs GPU", false);
-            // control_results(hrData.result_medians_seq, hrData.result_medians_gpu, "Per timeslots: Seq vs GPU", false);
-            control_results(hrData.updated_timeslots_seq, hrData.updated_timeslots_gpu, "Per wanted_timeslots: Seq vs GPU", false);
+            // GPU
+            if (cfg.runGpu) {
+                std::string label = "GPU (" + std::to_string(cfg.numKernels) + " kernels)";
+                measureTime(label, [&] () {
+                    hrData.processGPU(288, false, cfg.numKernels);
+                }, HR);
+                
+                if (cfg.runSeq) {
+                    control_results(hrData.updated_timeslots_seq, hrData.updated_timeslots_gpu, "Per wanted_timeslots: Seq vs GPU", false);
+                }
+            }
 
-            hrData.exportDebugCSV("hr_output.csv");
+            hrData.exportDebugCSV("hr_debug_output.csv");
+            hrData.exportToCSV("hr_output.csv");
 
         }
         // ------------- BVP Data --------------
@@ -237,36 +355,49 @@ int main() {
             std::cout << "Number of patients: " << bvpData.num_patients << std::endl;
 
             // Sequential
-            measureTime("CPU Sequential", [&] () {
-                bvpData.processSequential(288);
-            }, BVP);
-            std::cout << "Size of updated timeslots: " << bvpData.updated_timeslots_seq.size() << std::endl;
+            if (cfg.runSeq) {
+                measureTime("CPU Sequential", [&] () {
+                    bvpData.processSequential(288);
+                }, BVP);
+                std::cout << "Size of updated timeslots: " << bvpData.updated_timeslots_seq.size() << std::endl;
+            }
 
             // Parallel
-            measureTime("CPU Parallel + Vectorized", [&] () {
-                bvpData.processParallelCPU(288);
-            }, BVP);
-            // std::cout << "Size of medians through patients: " << hrData.result_medians_par_per_pat.size() << std::endl;
-            // std::cout << "Size of medians through only timeslots: " << hrData.result_medians_par.size() << std::endl;
+            if (cfg.runPar) {
+                measureTime("CPU Parallel + Vectorized", [&] () {
+                    bvpData.processParallelCPU(288);
+                }, BVP);
 
-            control_results(bvpData.result_medians_seq_per_pat, bvpData.result_medians_par_per_pat, "Per patients: Seq vs Par+vect", false);
-            control_results(bvpData.result_medians_seq, bvpData.result_medians_par, "Per timeslots: Seq vs Par+vect", false);
-            control_results(bvpData.updated_timeslots_seq, bvpData.updated_timeslots_par, "Per wanted_timeslots: Seq vs Par+vect", false);
+                if (cfg.runSeq) {
+                    control_results(bvpData.result_medians_seq_per_pat, bvpData.result_medians_par_per_pat, "Per patients: Seq vs Par+vect", false);
+                    control_results(bvpData.result_medians_seq, bvpData.result_medians_par, "Per timeslots: Seq vs Par+vect", false);
+                    control_results(bvpData.updated_timeslots_seq, bvpData.updated_timeslots_par, "Per wanted_timeslots: Seq vs Par+vect", false);
+                }
+                
+                measureTime("CPU Parallel - NoVect", [&] () {
+                    bvpData.processParallelCPUNonVectorized();
+                }, BVP);
+                
+                if (cfg.runSeq) {
+                    control_results(bvpData.result_medians_seq_per_pat, bvpData.result_medians_par_nov_vect_per_pat, "Seq vs Par-noVect", false);
+                }
+            }
 
-            measureTime("CPU Parallel - NoVect", [&] () {
-                bvpData.processParallelCPUNonVectorized();
-            }, BVP);
-            control_results(bvpData.result_medians_seq_per_pat, bvpData.result_medians_par_nov_vect_per_pat, "Seq vs Par-noVect", false);
+            // GPU
+            if (cfg.runGpu) {
+                std::string label = "GPU (" + std::to_string(cfg.numKernels) + " kernels)";
+                measureTime(label, [&] () {
+                    bvpData.processGPU(288, false, cfg.numKernels);
+                }, BVP);
 
-            measureTime("GPU - kernel.cl", [&] () {
-                bvpData.processGPU(288, false, 3);
-            }, BVP);
-            // control_results(bvpData.result_medians_seq_per_pat, bvpData.result_medians_gpu_per_pat, "Seq vs GPU", false);
-            // control_results(bvpData.result_medians_seq, bvpData.result_medians_gpu, "Per timeslots: Seq vs GPU", false);
-            control_results(bvpData.updated_timeslots_par, bvpData.updated_timeslots_gpu, "Per wanted_timeslots: Seq vs GPU", true);
+                if (cfg.runPar) {
+                    // Validating against Parallel output as Seq might be too slow or not run
+                    control_results(bvpData.updated_timeslots_par, bvpData.updated_timeslots_gpu, "Per wanted_timeslots: Par vs GPU", true);
+                }
+            }
 
-            bvpData.exportDebugCSV("bvp_output.csv");
-
+            bvpData.exportDebugCSV("bvp_debug_output.csv");
+            bvpData.exportToCSV("bvp_output.csv");
         }
     }
     benchmarkLog.close();

@@ -96,6 +96,7 @@ public:
     }
 
     void exportDebugCSV(const std::string& filename);
+    void exportToCSV(const std::string& filename);
 
     void processSequential(int32_t num_wanted_time_slots = -1);
     void processParallelCPU(int32_t num_wanted_time_slots = -1);

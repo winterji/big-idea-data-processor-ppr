@@ -92,6 +92,40 @@ std::tuple<uint32_t, std::string, float> DataReader::parseLine(const std::string
 
 }
 
+void DexcomData::exportToCSV(const std::string& filename) {
+    std::ofstream file(filename);
+
+    if (!file.is_open()) {
+        std::cerr << "Nelze otevřít soubor pro zápis: " << filename << std::endl;
+        return;
+    }
+
+    // 1. Hlavička CSV
+    file << "Index,\tPER PAT,\tPER SLOT,\tREDUCED\n";
+
+    file << std::fixed << std::setprecision(6);
+
+    size_t max_size = result_medians_seq_per_pat.size();
+    if (result_medians_par_per_pat.size() > max_size) max_size = result_medians_par_per_pat.size();
+    if (result_medians_gpu_per_pat.size() > max_size) max_size = result_medians_gpu_per_pat.size();
+
+    for (size_t i = 0; i < max_size; ++i) {
+        float val_seq = (i < result_medians_seq_per_pat.size()) ? result_medians_seq_per_pat[i] : -999.0f;
+        float val_seq_slot = (i < result_medians_seq.size()) ? result_medians_seq[i] : -999.0f;
+        float val_seq_reduce = (i < updated_timeslots_seq.size()) ? updated_timeslots_seq[i] : -999.0f;
+
+        file << i << ",\t"
+            << ((val_seq < -998.0f) ? "" : std::to_string(val_seq))
+            << ",\t"
+            << ((val_seq_slot < -998.0f) ? "" : std::to_string(val_seq_slot))
+            << ",\t"
+            << ((val_seq_reduce < -998.0f) ? "" : std::to_string(val_seq_reduce)) + "\n";
+    }
+
+    file.close();
+    std::cout << "Vysledky byly ulozeny do: " << filename << std::endl;
+}
+
 void DexcomData::exportDebugCSV(const std::string& filename) {
     std::ofstream file(filename);
 
@@ -101,7 +135,7 @@ void DexcomData::exportDebugCSV(const std::string& filename) {
     }
 
     // 1. Hlavička CSV
-    file << "Index, PER PAT: Seq, Par, GPU,   |   PER SLOT: Seq, Par, GPU,   |   REDUCE: SEQ, PAR, GPU\n";
+    file << "Index, PER PAT: Seq, Par, GPU,   |   PER SLOT: Seq, Par, GPU,   |   REDUCED: SEQ, PAR, GPU\n";
 
     file << std::fixed << std::setprecision(6);
 
@@ -136,8 +170,7 @@ void DexcomData::exportDebugCSV(const std::string& filename) {
             << "  |  "
             << ((val_seq_reduce < -998.0f) ? "" : std::to_string(val_seq_reduce)) + ","
             << ((val_par_reduce < -998.0f) ? "" : std::to_string(val_par_reduce)) + ","
-            << ((val_gpu_reduce < -998.0f) ? "" : std::to_string(val_gpu_reduce)) + ","
-            << diff_sg << "\n";
+            << ((val_gpu_reduce < -998.0f) ? "" : std::to_string(val_gpu_reduce)) + "\n";
     }
 
     file.close();
