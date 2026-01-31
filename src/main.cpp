@@ -9,8 +9,21 @@
 #include "../include/ReadDexcomData.h"
 #include "../include/DataReader.h"
 
+// output files to log into
+std::ofstream benchmarkLog("benchmark_logs.txt");
+std::ofstream benchmarkCsv("benchmarks.csv");
+
+std::string dataTypeToString(DataType type) {
+    switch (type) {
+        case DEXCOM: return "DEXCOM";
+        case HR:     return "HR";
+        case BVP:    return "BVP";
+        default:     return "UNKNOWN";
+    }
+}
+
 template <typename Func>
-void measureTime(const std::string& label, Func func) {
+void measureTime(const std::string& label, Func func, DataType dataType) {
     // 1. Získáme čas před spuštěním (High Resolution Clock)
     auto start = std::chrono::high_resolution_clock::now();
 
@@ -19,9 +32,16 @@ void measureTime(const std::string& label, Func func) {
     auto end = std::chrono::high_resolution_clock::now();
 
     std::chrono::duration<double, std::milli> duration = end - start;
+    double ms = duration.count();
 
-    std::cout << ">> [BENCHMARK] " << label
-              << ": " << duration.count() << " ms" << std::endl;
+    std::cout << dataTypeToString(dataType) << " >> [BENCHMARK] " << label << ": " << ms << " ms" << std::endl;
+    // Zápis do souboru (pokud je otevřený)
+    if (benchmarkLog.is_open()) {
+        benchmarkLog << dataTypeToString(dataType) << " >> [BENCHMARK] " << label << ": " << ms << " ms" << std::endl;
+    }
+    if (benchmarkCsv.is_open()) {
+        benchmarkCsv << dataTypeToString(dataType) << ", " << label << ", " << ms << std::endl;
+    }
 }
 
 void control_results(const std::vector<float>& res1, const std::vector<float>& res2, const std::string label, bool printDifferences = false) {
@@ -112,11 +132,18 @@ DexcomData readAllDexcomData() {
 
 int main() {
 
+    if (benchmarkCsv.is_open()) {
+        benchmarkCsv << "Dataset, Algorithm, Time [ms]" << std::endl;
+    }
+
     std::vector<std::string> processData{"dexcom", "hr", "bvp"};
 
     for (const auto& data : processData) {
         if (data == "dexcom") {
-            DexcomData dexcom = readAllDexcomData();
+            DexcomData dexcom;
+            measureTime("Read of DEXCOM data", [&] () {
+                dexcom = readAllDexcomData();
+            }, DEXCOM);
 
             std::cout << "Size of flat data " << dexcom.flat_data.size() << std::endl;
             std::cout << "TimeSlots: " << dexcom.num_time_slots << std::endl;
@@ -125,7 +152,7 @@ int main() {
             // Sequential
             measureTime("CPU Sequential", [&] () {
                 dexcom.processSequential();
-            });
+            }, DEXCOM);
             // std::cout << "Size of medians: " << dexcom.result_medians_seq.size() << std::endl;
             // std::cout << dexcom.result_medians_seq.at(0) << std::endl;
             // dexcom.result_medians.clear();
@@ -134,7 +161,7 @@ int main() {
             // Parallel
             measureTime("CPU Parallel + Vectorized", [&] () {
                 dexcom.processParallelCPU();
-            });
+            }, DEXCOM);
             // std::cout << "Size of medians: " << dexcom.result_medians_par.size() << std::endl;
             // std::cout << dexcom.result_medians_par.at(0) << std::endl;
             control_results(dexcom.result_medians_seq_per_pat, dexcom.result_medians_par_per_pat, "CPU seq vs CPU par+vect", true);
@@ -142,13 +169,13 @@ int main() {
             // Parallel, no vectorization
             measureTime("CPU Parallel", [&] () {
                 dexcom.processParallelCPUNonVectorized();
-            });
+            }, DEXCOM);
             control_results(dexcom.result_medians_seq_per_pat, dexcom.result_medians_par_nov_vect_per_pat, "CPU seq vs CPU par");
 
             // GPU
             measureTime("GPU", [&] () {
-                dexcom.processGPU();
-            });
+                dexcom.processGPU(-1, false, 3);
+            }, DEXCOM);
             control_results(dexcom.result_medians_seq, dexcom.result_medians_gpu, "CPU seq vs GPU");
 
             dexcom.exportDebugCSV("dexcom_output.csv");
@@ -156,7 +183,10 @@ int main() {
         }
         // ------------- HR Data --------------
         else if (data == "hr") {
-            auto hrData = readAllHRData();
+            DexcomData hrData;
+            measureTime("Read of HR data", [&] () {
+                hrData = readAllHRData();
+            }, HR);
             std::cout << "Size of HR data: " << hrData.flat_data.size() << std::endl;
             std::cout << "TimeSlots: " << hrData.num_time_slots << std::endl;
             std::cout << "Number of patients: " << hrData.num_patients << std::endl;
@@ -164,7 +194,7 @@ int main() {
             // Sequential
             measureTime("CPU Sequential", [&] () {
                 hrData.processSequential(288);
-            });
+            }, HR);
             // std::cout << "Size of updated timeslots: " << hrData.updated_timeslots_seq.size() << std::endl;
             // measureTime("CPU Seq new time slots", [&] () {
             //     hrData.processSequentialCPUToNewTimeSlots(288);
@@ -172,7 +202,7 @@ int main() {
 
             measureTime("CPU Parallel + Vectorized", [&] () {
                 hrData.processParallelCPU(288);
-            });
+            }, HR);
             // std::cout << "Size of medians through patients: " << hrData.result_medians_par_per_pat.size() << std::endl;
             // std::cout << "Size of medians through only timeslots: " << hrData.result_medians_par.size() << std::endl;
 
@@ -182,12 +212,12 @@ int main() {
 
             measureTime("CPU Parallel - NoVect", [&] () {
                 hrData.processParallelCPUNonVectorized();
-            });
+            }, HR);
             control_results(hrData.result_medians_seq_per_pat, hrData.result_medians_par_nov_vect_per_pat, "Seq vs Par-noVect", false);
 
             measureTime("GPU", [&] () {
-                hrData.processGPU(288, true, 3, "../src/kernel.cl");
-            });
+                hrData.processGPU(288, false, 3);
+            }, HR);
             // control_results(hrData.result_medians_seq_per_pat, hrData.result_medians_gpu_per_pat, "Seq vs GPU", false);
             // control_results(hrData.result_medians_seq, hrData.result_medians_gpu, "Per timeslots: Seq vs GPU", false);
             control_results(hrData.updated_timeslots_seq, hrData.updated_timeslots_gpu, "Per wanted_timeslots: Seq vs GPU", false);
@@ -201,7 +231,7 @@ int main() {
 
             measureTime("Read of BVP data", [&] () {
                 bvpData = readBVPData(16);
-            });
+            }, BVP);
             std::cout << "Size of BVP data: " << bvpData.flat_data.size() << std::endl;
             std::cout << "TimeSlots: " << bvpData.num_time_slots << std::endl;
             std::cout << "Number of patients: " << bvpData.num_patients << std::endl;
@@ -209,13 +239,13 @@ int main() {
             // Sequential
             measureTime("CPU Sequential", [&] () {
                 bvpData.processSequential(288);
-            });
+            }, BVP);
             std::cout << "Size of updated timeslots: " << bvpData.updated_timeslots_seq.size() << std::endl;
 
             // Parallel
             measureTime("CPU Parallel + Vectorized", [&] () {
                 bvpData.processParallelCPU(288);
-            });
+            }, BVP);
             // std::cout << "Size of medians through patients: " << hrData.result_medians_par_per_pat.size() << std::endl;
             // std::cout << "Size of medians through only timeslots: " << hrData.result_medians_par.size() << std::endl;
 
@@ -225,18 +255,21 @@ int main() {
 
             measureTime("CPU Parallel - NoVect", [&] () {
                 bvpData.processParallelCPUNonVectorized();
-            });
+            }, BVP);
             control_results(bvpData.result_medians_seq_per_pat, bvpData.result_medians_par_nov_vect_per_pat, "Seq vs Par-noVect", false);
 
             measureTime("GPU - kernel.cl", [&] () {
-                bvpData.processGPU(288, true, 3);
-            });
-            control_results(bvpData.result_medians_seq_per_pat, bvpData.result_medians_gpu_per_pat, "Seq vs GPU", false);
-            control_results(bvpData.result_medians_seq, bvpData.result_medians_gpu, "Per timeslots: Seq vs GPU", false);
+                bvpData.processGPU(288, false, 3);
+            }, BVP);
+            // control_results(bvpData.result_medians_seq_per_pat, bvpData.result_medians_gpu_per_pat, "Seq vs GPU", false);
+            // control_results(bvpData.result_medians_seq, bvpData.result_medians_gpu, "Per timeslots: Seq vs GPU", false);
             control_results(bvpData.updated_timeslots_par, bvpData.updated_timeslots_gpu, "Per wanted_timeslots: Seq vs GPU", true);
 
             bvpData.exportDebugCSV("bvp_output.csv");
 
         }
     }
+    benchmarkLog.close();
+    benchmarkCsv.close();
+    return 0;
 };

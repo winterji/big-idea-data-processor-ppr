@@ -11,13 +11,6 @@
     b = (tmp_a < tmp_b) ? tmp_b : tmp_a; \
 }
 
-// Prohodi dva prvky v globalni pameti
-inline void swap_global(__global float* a, __global float* b) {
-    float tmp = *a;
-    *a = *b;
-    *b = tmp;
-}
-
 void shell_sort_global(__global float* data, int start_idx, int count) {
     // Gap sequence: n/2, n/4, ... 1
     for (int gap = count / 2; gap > 0; gap /= 2) {

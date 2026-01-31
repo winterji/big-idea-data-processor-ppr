@@ -29,17 +29,17 @@ inline void transpose_matrix(float32x4_t& r0, float32x4_t& r1, float32x4_t& r2, 
 }
 
 
-inline void sort_vertical_4(float32x4_t& q0, float32x4_t& q1, float32x4_t& q2, float32x4_t& q3) {
-    SORT_VEC(q0, q1); SORT_VEC(q2, q3);
-    SORT_VEC(q0, q2); SORT_VEC(q1, q3);
-    SORT_VEC(q1, q2);
-}
+// inline void sort_vertical_4(float32x4_t& q0, float32x4_t& q1, float32x4_t& q2, float32x4_t& q3) {
+//     SORT_VEC(q0, q1); SORT_VEC(q2, q3);
+//     SORT_VEC(q0, q2); SORT_VEC(q1, q3);
+//     SORT_VEC(q1, q2);
+// }
 
-// Generováno AI
-// Funkce: Full Sorting Network pro 16 prvků
-// Vstup: 4 registry (q0..q3), každý obsahuje 4 floaty.
-// Výstup: q0..q3 budou obsahovat plně seřazenou posloupnost 0..15.
-// q0 = [0, 1, 2, 3], q1 = [4, 5, 6, 7] ...
+// // Generováno AI
+// // Funkce: Full Sorting Network pro 16 prvků
+// // Vstup: 4 registry (q0..q3), každý obsahuje 4 floaty.
+// // Výstup: q0..q3 budou obsahovat plně seřazenou posloupnost 0..15.
+// // q0 = [0, 1, 2, 3], q1 = [4, 5, 6, 7] ...
 inline void bitonic_sort_16(float32x4_t& q0, float32x4_t& q1, float32x4_t& q2, float32x4_t& q3) {
 
     SORT_VEC(q0, q1); SORT_VEC(q2, q3); SORT_VEC(q0, q2); SORT_VEC(q1, q3);
@@ -72,40 +72,40 @@ inline void bitonic_sort_16(float32x4_t& q0, float32x4_t& q1, float32x4_t& q2, f
     // transpose_matrix(q0, q1, q2, q3);
 }
 
-inline float get_median_from_bitonic_sort(float32x4_t& d0, float32x4_t& d1, float32x4_t& d2, float32x4_t& d3) {
-    float32x4_t zero = vdupq_n_f32(0.001f);
-    uint32x4_t counts = vdupq_n_u32(0);
+// inline float get_median_from_bitonic_sort(float32x4_t& d0, float32x4_t& d1, float32x4_t& d2, float32x4_t& d3) {
+//     float32x4_t zero = vdupq_n_f32(0.001f);
+//     uint32x4_t counts = vdupq_n_u32(0);
 
-    counts = vsubq_u32(counts, vcgtq_f32(d0, zero));
-    counts = vsubq_u32(counts, vcgtq_f32(d1, zero));
-    counts = vsubq_u32(counts, vcgtq_f32(d2, zero));
-    counts = vsubq_u32(counts, vcgtq_f32(d3, zero));
+//     counts = vsubq_u32(counts, vcgtq_f32(d0, zero));
+//     counts = vsubq_u32(counts, vcgtq_f32(d1, zero));
+//     counts = vsubq_u32(counts, vcgtq_f32(d2, zero));
+//     counts = vsubq_u32(counts, vcgtq_f32(d3, zero));
 
-    uint32_t valid_count = vaddvq_u32(counts);
+//     uint32_t valid_count = vaddvq_u32(counts);
 
-    float grand_median = 0.0f;
+//     float grand_median = 0.0f;
 
-    if (valid_count > 0) {
-        uint32_t invalid_count = 16 - valid_count;
+//     if (valid_count > 0) {
+//         uint32_t invalid_count = 16 - valid_count;
 
-        uint32_t median_offset = valid_count / 2;
+//         uint32_t median_offset = valid_count / 2;
 
-        uint32_t target_idx = invalid_count + median_offset;
+//         uint32_t target_idx = invalid_count + median_offset;
 
-        float sorted_buf[16];
-        vst1q_f32(sorted_buf, d0);
-        vst1q_f32(sorted_buf + 4, d1);
-        vst1q_f32(sorted_buf + 8, d2);
-        vst1q_f32(sorted_buf + 12, d3);
+//         float sorted_buf[16];
+//         vst1q_f32(sorted_buf, d0);
+//         vst1q_f32(sorted_buf + 4, d1);
+//         vst1q_f32(sorted_buf + 8, d2);
+//         vst1q_f32(sorted_buf + 12, d3);
 
-        grand_median = sorted_buf[target_idx];
+//         grand_median = sorted_buf[target_idx];
 
-        if (valid_count % 2 == 0) {
-            grand_median = (grand_median + sorted_buf[target_idx - 1]) / 2.0f;
-        }
-    }
-    return grand_median;
-}
+//         if (valid_count % 2 == 0) {
+//             grand_median = (grand_median + sorted_buf[target_idx - 1]) / 2.0f;
+//         }
+//     }
+//     return grand_median;
+// }
 
 void DexcomData::processParallelCPU(int32_t num_wanted_time_slots) {
     // Zarovnání na čtveřice

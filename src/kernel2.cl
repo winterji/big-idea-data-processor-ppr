@@ -1,5 +1,8 @@
 // kernel.cl
 
+#define EMPTY_VALUE -1.0e30f
+#define VALID_THRESHOLD (EMPTY_VALUE + 100.0f)
+
 // Makro pro Compare-And-Swap
 #define CAS(a, b) { \
     float tmp_a = a; \
@@ -8,7 +11,7 @@
     b = (tmp_a < tmp_b) ? tmp_b : tmp_a; \
 }
 
-void sort(float* arr, int n) {
+static inline void sort(float* arr, int n) {
     for (int i = 0; i < n - 1; i++) {
         for (int j = 0; j < n - i - 1; j++) {
             if (arr[j] > arr[j + 1]) {
@@ -32,7 +35,8 @@ __kernel void median_kernel(
         return;
     }
 
-    int offset = gid * num_days;
+    // Pretypovani na long pro bezpecnost u velkych bufferu
+    long offset = (long)gid * (long)num_days;
 
     float v0 = data[offset + 0];
     float v1 = data[offset + 1];
@@ -65,16 +69,17 @@ __kernel void median_kernel(
 
     int valid_count = 0;
 
-    valid_count += (v0 > 0.0f);
-    valid_count += (v1 > 0.0f);
-    valid_count += (v2 > 0.0f);
-    valid_count += (v3 > 0.0f);
-    valid_count += (v4 > 0.0f);
-    valid_count += (v5 > 0.0f);
-    valid_count += (v6 > 0.0f);
-    valid_count += (v7 > 0.0f);
+    // Aktualizovano na VALID_THRESHOLD
+    valid_count += (v0 > VALID_THRESHOLD);
+    valid_count += (v1 > VALID_THRESHOLD);
+    valid_count += (v2 > VALID_THRESHOLD);
+    valid_count += (v3 > VALID_THRESHOLD);
+    valid_count += (v4 > VALID_THRESHOLD);
+    valid_count += (v5 > VALID_THRESHOLD);
+    valid_count += (v6 > VALID_THRESHOLD);
+    valid_count += (v7 > VALID_THRESHOLD);
 
-    float median = 0.0f;
+    float median = EMPTY_VALUE; // Defaultni hodnota
 
     if (valid_count > 0) {
         int start_idx = 8 - valid_count;
@@ -107,16 +112,17 @@ __kernel void reduce_patients_kernel(
     float buffer[MAX_BUFFER_SIZE];
 
     int valid_count = 0;
-    int offset = ts * num_patients;
+    long offset = (long)ts * (long)num_patients;
 
     for (int p = 0; p < num_patients; ++p) {
         float val = input_matrix[offset + p];
-        if (val > 0.001f && valid_count < MAX_BUFFER_SIZE) {
+        // Aktualizovano na VALID_THRESHOLD
+        if (val > VALID_THRESHOLD && valid_count < MAX_BUFFER_SIZE) {
             buffer[valid_count++] = val;
         }
     }
 
-    float result = 0.0f;
+    float result = EMPTY_VALUE;
     if (valid_count > 0) {
         sort(buffer, valid_count);
 
@@ -154,12 +160,13 @@ __kernel void reduce_slots_kernel(
 
     for (int k = start_idx; k < end_idx; ++k) {
         float val = input_slots[k];
-        if (val > 0.001f && valid_count < MAX_SLOT_BUFFER) {
+        if (val > VALID_THRESHOLD && valid_count < MAX_SLOT_BUFFER) {
             buffer[valid_count++] = val;
         }
     }
 
-    float result = 0.0f;
+    float result = EMPTY_VALUE;
+
     if (valid_count > 0) {
         sort(buffer, valid_count);
 

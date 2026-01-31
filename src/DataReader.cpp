@@ -241,7 +241,7 @@ std::optional<uint32_t> DataConverter::units_15ms_since_midnight(const std::stri
     // Fast path: assume fixed positions "YYYY-MM-DDTHH:MM:SS" or "YYYY-MM-DD HH:MM:SS"
     //             012345678901234567890
     //             0         1         2
-    // Need at least 19 chars for HH:MM:SS
+
     if (ts.size() >= 23) {
         // If 'T' or ' ' at index 10 and ':' at 13 and 16
         if ((ts[10] == 'T' || ts[10] == ' ') && ts[13] == ':' && ts[16] == ':') {
@@ -269,12 +269,9 @@ std::optional<uint32_t> DataConverter::units_15ms_since_midnight(const std::stri
                 *om >= 0 && *om < 60 &&
                 *os >= 0 && *os < 60) {
 
-                // Parse Milliseconds if present (e.g. .123 or ,123)
-                // We look at index 19 for the separator
+
                 if (ts.size() > 20 && (ts[19] == '.' || ts[19] == ',')) {
-                    // Count actual digits to handle shorthand correctly
                     int digit_count = 0;
-                    // We only care about up to 3 digits for milliseconds precision
                     for(size_t i = 20; i < ts.size() && i < 23; ++i) {
                         if(std::isdigit(ts[i])) digit_count++;
                         else break;
@@ -292,10 +289,8 @@ std::optional<uint32_t> DataConverter::units_15ms_since_midnight(const std::stri
                     }
                 }
 
-                // Calculate total milliseconds since midnight
                 // (Hours * 3600 + Minutes * 60 + Seconds) * 1000 + Milliseconds
                 uint32_t total_ms = (*oh * 3600 + *om * 60 + *os) * 1000 + ms;
-
                 // Return the 15ms unit index
                 return total_ms / 15;
             }
