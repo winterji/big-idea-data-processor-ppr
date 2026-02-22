@@ -162,7 +162,6 @@ DexcomData readAllDexcomData() {
 
 Config parseCLIArguments(int argc, char* argv[]) {
     Config cfg;
-    // --- Command Line Argument Parsing ---
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
         if (arg == "-h" || arg == "--help") {
@@ -348,7 +347,7 @@ int main(int argc, char* argv[]) {
             DexcomData bvpData;
 
             measureTime("Read of BVP data", [&] () {
-                bvpData = readBVPData(16);
+                bvpData = readBVPData(4);
             }, BVP);
             std::cout << "Size of BVP data: " << bvpData.flat_data.size() << std::endl;
             std::cout << "TimeSlots: " << bvpData.num_time_slots << std::endl;

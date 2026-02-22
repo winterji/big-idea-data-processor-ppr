@@ -12,13 +12,10 @@
 }
 
 void shell_sort_global(__global float* data, int start_idx, int count) {
-    // Gap sequence: n/2, n/4, ... 1
     for (int gap = count / 2; gap > 0; gap /= 2) {
-        // Gapped insertion sort
         for (int i = gap; i < count; i += 1) {
             float temp = data[start_idx + i];
             int j;
-            // Posouváme prvky, dokud nenajdeme místo pro temp
             for (j = i; j >= gap && data[start_idx + j - gap] > temp; j -= gap) {
                 data[start_idx + j] = data[start_idx + j - gap];
             }

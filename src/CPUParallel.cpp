@@ -200,7 +200,6 @@ void DexcomData::processParallelCPU(int32_t num_wanted_time_slots) {
                     //     std::cout << "Pushing median per patient on index " << ((ts * num_patients) + p + k) << " : " << median << std::endl;
                 }
             }
-            // TODO tady by melo probehnout zpracovani pacientu, ktere se nevesli do nasobku 4
             // // Zpracování pacientů, kteří se nevešli do čtveřice (zbytek dělení 4)
             // for (uint32_t p = aligned_patients; p < num_patients; ++p) {
             //     float* ptr = getPatientDataPtr(ts, p);

@@ -100,7 +100,7 @@ void DexcomData::exportToCSV(const std::string& filename) {
         return;
     }
 
-    // 1. Hlavička CSV
+    // Hlavička CSV
     file << "Index,\tPER PAT,\tPER SLOT,\tREDUCED\n";
 
     file << std::fixed << std::setprecision(6);
@@ -134,7 +134,7 @@ void DexcomData::exportDebugCSV(const std::string& filename) {
         return;
     }
 
-    // 1. Hlavička CSV
+    // Hlavička CSV
     file << "Index, PER PAT: Seq, Par, GPU,   |   PER SLOT: Seq, Par, GPU,   |   REDUCED: SEQ, PAR, GPU\n";
 
     file << std::fixed << std::setprecision(6);
@@ -613,8 +613,7 @@ DexcomData DataConverter::convertToFlatDataInMilliseconds(
             if (flat_index > max_idx) max_idx = flat_index;
 
             if (out.flat_data[flat_index] > 0) {
-                // Toto by se nemělo stát díky logice day_counters, ledaže by day_counters selhalo
-                // nebo data obsahovala duplicity pro stejný čas.
+                // ...
             } else {
                 out.flat_data[flat_index] = rec.mValue;
                 day_counters[counter_idx]++;
